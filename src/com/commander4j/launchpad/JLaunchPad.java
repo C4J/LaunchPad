@@ -14,6 +14,8 @@ import java.awt.GraphicsDevice;
 import java.awt.Rectangle;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.Transferable;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
@@ -28,7 +30,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
@@ -40,7 +41,11 @@ import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.TransferHandler;
 
+import com.commander4j.dialog.JDialogAbout;
+import com.commander4j.dialog.JDialogLicenses;
+import com.commander4j.gui.JButton4j;
 import com.commander4j.sys.Common;
+import com.commander4j.util.JHelp;
 import com.commander4j.util.Utility;
 
 public class JLaunchPad extends JFrame
@@ -49,7 +54,7 @@ public class JLaunchPad extends JFrame
     private Dimension buttonSize = new Dimension(32,32);
     private static int widthadjustment = 0;
     private static int heightadjustment = 0;
-    private static String version = "1.10";
+    public static String version = "1.10";
 
     private final JTabbedPane tabs;
 
@@ -82,7 +87,7 @@ public class JLaunchPad extends JFrame
         toolbar.setOrientation(JToolBar.VERTICAL);
         getContentPane().add(toolbar,BorderLayout.WEST);
 
-        JButton addTabButton = new JButton(Common.icon_add);
+        JButton4j addTabButton = new JButton4j(Common.icon_add);
         addTabButton.setToolTipText("Add a new Tab");
         addTabButton.setSize(buttonSize);
         addTabButton.setPreferredSize(buttonSize);
@@ -103,7 +108,7 @@ public class JLaunchPad extends JFrame
         toolbar.addSeparator();
         toolbar.add(addTabButton);
 
-        JButton editTabButton = new JButton(Common.icon_edit);
+        JButton4j editTabButton = new JButton4j(Common.icon_edit);
         editTabButton.setToolTipText("Rename Tab");
         editTabButton.setPreferredSize(buttonSize);
         editTabButton.setSize(buttonSize);
@@ -122,7 +127,7 @@ public class JLaunchPad extends JFrame
         });
         toolbar.add(editTabButton);
 
-        JButton deleteTabButton = new JButton(Common.icon_delete);
+        JButton4j deleteTabButton = new JButton4j(Common.icon_delete);
         deleteTabButton.setToolTipText("Delete a Category");
         deleteTabButton.setPreferredSize(buttonSize);
         deleteTabButton.setSize(buttonSize);
@@ -141,7 +146,7 @@ public class JLaunchPad extends JFrame
         });
         toolbar.add(deleteTabButton);
 
-        JButton moveTabUpButton = new JButton(Common.icon_up);
+        JButton4j moveTabUpButton = new JButton4j(Common.icon_up);
         moveTabUpButton.setToolTipText("Move selected Category up.");
         moveTabUpButton.setPreferredSize(buttonSize);
         moveTabUpButton.setSize(buttonSize);
@@ -152,7 +157,7 @@ public class JLaunchPad extends JFrame
         });
         toolbar.add(moveTabUpButton);
 
-        JButton moveTabDownButton = new JButton(Common.icon_down);
+        JButton4j moveTabDownButton = new JButton4j(Common.icon_down);
         moveTabDownButton.setToolTipText("Move selected Category down.");
         moveTabDownButton.setPreferredSize(buttonSize);
         moveTabDownButton.setSize(buttonSize);
@@ -164,7 +169,7 @@ public class JLaunchPad extends JFrame
         toolbar.add(moveTabDownButton);
 
         // --- Add App (.app chooser) ---
-        JButton addAppButton = new JButton(Common.icon_select_file);
+        JButton4j addAppButton = new JButton4j(Common.icon_select_file);
         addAppButton.setToolTipText("Add Application…");
         addAppButton.setPreferredSize(buttonSize);
         addAppButton.setMaximumSize(buttonSize);
@@ -172,7 +177,7 @@ public class JLaunchPad extends JFrame
         toolbar.add(addAppButton);
 
         // --- Import Folder (all .app recursively) ---
-        JButton importFolderButton = new JButton(Common.icon_select_folder);
+        JButton4j importFolderButton = new JButton4j(Common.icon_select_folder);
         importFolderButton.setToolTipText("Import Applications from Folder to current Category…");
         importFolderButton.setPreferredSize(buttonSize);
         importFolderButton.setMaximumSize(buttonSize);
@@ -180,14 +185,54 @@ public class JLaunchPad extends JFrame
         toolbar.add(importFolderButton);
 
         // --- Pack Tab (defragment current tab) ---
-        JButton packTabButton = new JButton(Common.icon_structure);
+        JButton4j packTabButton = new JButton4j(Common.icon_structure);
         packTabButton.setToolTipText("Pack Icons on This Category (remove spaces).");
         packTabButton.setPreferredSize(buttonSize);
         packTabButton.setMaximumSize(buttonSize);
         packTabButton.addActionListener(e -> packCurrentTab());
         toolbar.add(packTabButton);
+        
+        
+        JButton4j btnHelp = new JButton4j(Common.icon_help);
+		btnHelp.setPreferredSize(new Dimension(32, 32));
+		btnHelp.setFocusable(false);
+		btnHelp.setToolTipText("Help");
+		toolbar.add(btnHelp);
 
-        JButton exitTabButton = new JButton(Common.icon_exit);
+		final JHelp help = new JHelp();
+		help.enableHelpOnButton(btnHelp, "https://wiki.commander4j.com/index.php?title=LaunchPad");
+
+		JButton4j btnAbout = new JButton4j(Common.icon_about);
+		btnAbout.setPreferredSize(new Dimension(32, 32));
+		btnAbout.setFocusable(false);
+		btnAbout.setToolTipText("About");
+		btnAbout.addActionListener(new ActionListener()
+		{
+			public void actionPerformed(ActionEvent e)
+			{
+				JDialogAbout about = new JDialogAbout();
+				about.setVisible(true);
+			}
+		});
+		toolbar.add(btnAbout);
+
+		JButton4j btnLicense = new JButton4j(Common.icon_license);
+		btnLicense.setPreferredSize(new Dimension(32, 32));
+		btnLicense.setFocusable(false);
+		btnLicense.setToolTipText("Licences");
+		btnLicense.addActionListener(new ActionListener()
+		{
+			public void actionPerformed(ActionEvent e)
+			{
+				JDialogLicenses dl = new JDialogLicenses(JLaunchPad.this);
+				dl.setVisible(true);
+			}
+		});
+
+		toolbar.add(btnLicense);
+
+
+        JButton4j exitTabButton = new JButton4j(Common.icon_exit);
         exitTabButton.setToolTipText("Exit");
         exitTabButton.setPreferredSize(buttonSize);
         exitTabButton.setSize(buttonSize);

@@ -11,6 +11,7 @@
       <mountPoint id="25" location="xml" />
       <mountPoint id="26" location="lib" />
       <mountPoint id="37" />
+      <mountPoint id="44" location="logs" />
     </mountPoints>
     <entries>
       <dirEntry mountPoint="24" file="./images" subDirectory="images">
@@ -22,6 +23,7 @@
       <dirEntry mountPoint="25" file="./xml" overwriteMode="0" uninstallMode="1" overrideOverwriteMode="true" overrideUninstallMode="true" subDirectory="xml">
         <exclude>
           <entry location=".DS_Store" />
+          <entry location="config/launchpad.xml" />
         </exclude>
       </dirEntry>
       <dirEntry mountPoint="26" file="./lib" subDirectory="lib">

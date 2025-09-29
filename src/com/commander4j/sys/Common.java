@@ -6,12 +6,14 @@ import java.io.File;
 
 import javax.swing.ImageIcon;
 
+import com.commander4j.renderer.JDBListRenderer;
+
 
 public class Common {
 	
 	public static String helpURL = "http://wiki.commander4j.com";
 
-
+	public static final JDBListRenderer renderer_list = new JDBListRenderer();
 	
 	public static String osName = "";
 
