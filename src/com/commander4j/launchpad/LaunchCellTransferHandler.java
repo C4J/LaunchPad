@@ -30,7 +30,8 @@ public class LaunchCellTransferHandler extends TransferHandler {
 
     @Override
     public boolean canImport(TransferSupport support) {
-        if (!cell.isEmpty()) return false; // only empty cells accept drops
+        // Only accept drops into empty cells
+        if (!cell.isEmpty()) return false;
         return support.isDataFlavorSupported(LaunchpadTransferable.DRAG_PAYLOAD_FLAVOR)
             || support.isDataFlavorSupported(DataFlavor.javaFileListFlavor)
             || support.isDataFlavorSupported(DataFlavor.stringFlavor);
@@ -41,9 +42,9 @@ public class LaunchCellTransferHandler extends TransferHandler {
         if (!canImport(support)) return false;
 
         try {
-            Transferable t = support.getTransferable();
+            final Transferable t = support.getTransferable();
 
-            // Internal payload
+            // 1) Internal payload? → Treat as MOVE, no duplicate checks.
             DragPayload payload = null;
             if (t.isDataFlavorSupported(LaunchpadTransferable.DRAG_PAYLOAD_FLAVOR)) {
                 try {
@@ -51,11 +52,21 @@ public class LaunchCellTransferHandler extends TransferHandler {
                 } catch (UnsupportedFlavorException | IOException ignore) {}
             }
 
-            // Determine file being dropped
+            if (payload != null && payload.sourceCell != null) {
+                AppComponent moving = payload.sourceCell.getApp();
+                if (moving == null) return false;
+
+                // If somehow dropping back into the same empty cell, do nothing.
+                if (payload.sourceCell == cell) return true;
+
+                cell.setApp(moving);
+                payload.sourceCell.clear();
+                return true;
+            }
+
+            // 2) External drop (Finder / text path) → resolve file to real *.app and duplicate-check.
             File f = null;
-            if (payload != null && payload.appPath != null) {
-                f = new File(payload.appPath);
-            } else if (t.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+            if (t.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
                 try {
                     @SuppressWarnings("unchecked")
                     List<File> files = (List<File>) t.getTransferData(DataFlavor.javaFileListFlavor);
@@ -67,77 +78,31 @@ public class LaunchCellTransferHandler extends TransferHandler {
                     if (path != null && !path.isBlank()) f = new File(path);
                 } catch (UnsupportedFlavorException | IOException ignore) {}
             }
+            if (f == null || !f.exists()) return false;
 
-            if (f == null || !f.exists() || !f.getName().endsWith(".app")) return false;
-
-            // Resolve to the real bundle path (handles /Applications → /System/Applications)
+            // Resolve to the real bundle (handles /Applications → /System/Applications, and inner paths)
             File real = LaunchPadUtils.resolveRealAppBundle(f);
-            if (real == null) return false;
+            if (real == null || !real.getName().endsWith(".app")) return false;
 
-            // Duplicate check across tabs (use canon of real bundle)
+            // Duplicate check across all tabs (by canonical real path)
             JTabbedPane tabs = (JTabbedPane) SwingUtilities.getAncestorOfClass(JTabbedPane.class, cell);
             String dropCanon = LaunchPadUtils.canonicalPath(real);
-
-            // payloadCanon with fallback to source cell path
-            String payloadCanon = null;
-            if (payload != null) {
-                String p = payload.appPath;
-                if ((p == null || p.isBlank())
-                    && payload.sourceCell != null
-                    && payload.sourceCell.getApp() != null) {
-                    p = payload.sourceCell.getApp().getAppPath();
-                }
-                if (p != null && !p.isBlank()) {
-                    payloadCanon = LaunchPadUtils.canonicalPath(new File(p));
-                }
-            }
-
-            boolean movingSameInstance =
-                (payload != null) && (payloadCanon != null) && dropCanon.equals(payloadCanon);
-
             LaunchPadUtils.Location where = LaunchPadUtils.findApp(tabs, dropCanon);
-
             if (where != null) {
-                if (movingSameInstance) {
-                    boolean isSameSource = false;
-                    if (payload.sourceCell != null
-                        && tabs.getComponentAt(where.tabIndex) instanceof LaunchTabPanel panel
-                        && where.cellIndex >= 0 && where.cellIndex < panel.getComponentCount()
-                        && panel.getComponent(where.cellIndex) == payload.sourceCell) {
-                        isSameSource = true;
-                    }
-                    if (!isSameSource) {
-                        JOptionPane.showMessageDialog(
-                            tabs,
-                            "Application " + real.getName() +
-                                " already exists on the \"" + where.tabName + "\" tab (cell " + where.cellIndex + ").",
-                            "Duplicate App",
-                            JOptionPane.INFORMATION_MESSAGE
-                        );
-                        return false;
-                    }
-                } else {
-                    JOptionPane.showMessageDialog(
-                        tabs,
-                        "Application " + real.getName() +
-                            " already exists on the \"" + where.tabName + "\" tab (cell " + where.cellIndex + ").",
-                        "Duplicate App",
-                        JOptionPane.INFORMATION_MESSAGE
-                    );
-                    return false;
-                }
+                JOptionPane.showMessageDialog(
+                    tabs,
+                    "Application " + real.getName() +
+                    " already exists on the \"" + where.tabName + "\" tab (cell " + where.cellIndex + ").",
+                    "Duplicate App",
+                    JOptionPane.INFORMATION_MESSAGE
+                );
+                return false;
             }
 
+            // Create and place
             AppComponent app = MacAppUtils.createAppComponent(real);
             if (app == null) return false;
-
             cell.setApp(app);
-
-            // Clear source on internal MOVE
-            if (movingSameInstance && payload.sourceCell != null && payload.sourceCell != cell) {
-                payload.sourceCell.clear();
-            }
-
             return true;
 
         } catch (Exception e) {
@@ -164,6 +129,6 @@ public class LaunchCellTransferHandler extends TransferHandler {
 
     @Override
     protected void exportDone(JComponent source, Transferable data, int action) {
-        // no-op (we clear source explicitly in importData when needed)
+        // no-op; we clear the source explicitly on successful MOVE above.
     }
 }

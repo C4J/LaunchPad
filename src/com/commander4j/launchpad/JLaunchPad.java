@@ -54,7 +54,7 @@ public class JLaunchPad extends JFrame
     private Dimension buttonSize = new Dimension(32,32);
     private static int widthadjustment = 0;
     private static int heightadjustment = 0;
-    public static String version = "1.10";
+    public static String version = "1.21";
 
     private final JTabbedPane tabs;
 

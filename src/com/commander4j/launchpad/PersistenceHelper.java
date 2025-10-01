@@ -2,7 +2,9 @@ package com.commander4j.launchpad;
 
 /*******************************************************************************
  * Title:        Commander4j
- * Description:  XML Persistence for LaunchPad (supports per-tab JScrollPane wrapper)
+ * Description:  XML Persistence for LaunchPad
+ *               - Tabs wrapped in JScrollPane (vertical scrollbar)
+ *               - Saves/loads selected tab (selected="true")
  * Author:       Dave (with ChatGPT assistance)
  * License:      GNU General Public License
  *******************************************************************************/
@@ -13,15 +15,15 @@ import java.io.FileOutputStream;
 import javax.swing.JTabbedPane;
 import javax.swing.JScrollPane;
 import javax.swing.ScrollPaneConstants;
+import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
-
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 
 public class PersistenceHelper
 {
@@ -29,41 +31,48 @@ public class PersistenceHelper
 
     public static void saveState(JTabbedPane tabs)
     {
-        try
-        {
-            var db = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+        try {
+            DocumentBuilder db = DocumentBuilderFactory.newInstance().newDocumentBuilder();
             Document doc = db.newDocument();
 
             Element root = doc.createElement("launchpad");
             doc.appendChild(root);
 
-            for (int t = 0; t < tabs.getTabCount(); t++)
-            {
+            int selected = tabs.getSelectedIndex();
+
+            for (int t = 0; t < tabs.getTabCount(); t++) {
                 Element tabEl = doc.createElement("tab");
                 tabEl.setAttribute("name", tabs.getTitleAt(t));
+                if (t == selected) {
+                    tabEl.setAttribute("selected", "true"); // remember currently selected tab
+                }
                 root.appendChild(tabEl);
 
-                LaunchTabPanel tabPanel = unwrapPanel(tabs.getComponentAt(t));
-                if (tabPanel == null) continue;
+                // unwrap LaunchTabPanel if it’s inside a JScrollPane
+                LaunchTabPanel panel = null;
+                var comp = tabs.getComponentAt(t);
+                if (comp instanceof LaunchTabPanel p) {
+                    panel = p;
+                } else if (comp instanceof JScrollPane sp) {
+                    var view = (sp.getViewport() != null) ? sp.getViewport().getView() : null;
+                    if (view instanceof LaunchTabPanel p) panel = p;
+                }
 
-                for (int c = 0; c < tabPanel.getComponentCount(); c++)
-                {
-                    if (tabPanel.getComponent(c) instanceof LaunchCell cell)
-                    {
-                        AppComponent app = cell.getApp();
-                        if (app != null)
-                        {
-                            Element cellEl = doc.createElement("cell");
-                            cellEl.setAttribute("index", String.valueOf(c));
-                            cellEl.setAttribute("path", app.getAppPath());
+                if (panel != null) {
+                    for (int c = 0; c < panel.getComponentCount(); c++) {
+                        if (panel.getComponent(c) instanceof LaunchCell cell) {
+                            AppComponent app = cell.getApp();
+                            if (app != null) {
+                                Element cellEl = doc.createElement("cell");
+                                cellEl.setAttribute("index", String.valueOf(c));
+                                cellEl.setAttribute("path", app.getAppPath());
 
-                            String customIcon = app.getCustomIconPath();
-                            if (customIcon != null && !customIcon.isBlank())
-                            {
-                                cellEl.setAttribute("icon", customIcon);
+                                String customIcon = app.getCustomIconPath();
+                                if (customIcon != null && !customIcon.isBlank()) {
+                                    cellEl.setAttribute("icon", customIcon);
+                                }
+                                tabEl.appendChild(cellEl);
                             }
-
-                            tabEl.appendChild(cellEl);
                         }
                     }
                 }
@@ -74,9 +83,7 @@ public class PersistenceHelper
 
             Transformer tf = TransformerFactory.newInstance().newTransformer();
             tf.transform(new DOMSource(doc), new StreamResult(new FileOutputStream(outFile)));
-        }
-        catch (Exception e)
-        {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -87,29 +94,36 @@ public class PersistenceHelper
             File inFile = new File(CONFIG_PATH);
             if (!inFile.exists()) return;
 
-            var db = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-            var doc = db.parse(inFile);
+            DocumentBuilder db = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+            Document doc = db.parse(inFile);
 
             tabs.removeAll();
+
+            int selectedIndex = -1;
 
             var tabNodes = doc.getElementsByTagName("tab");
             for (int i = 0; i < tabNodes.getLength(); i++) {
                 Element tabEl = (Element) tabNodes.item(i);
                 String name = tabEl.getAttribute("name");
+                boolean isSelected = "true".equalsIgnoreCase(tabEl.getAttribute("selected"));
 
+                // Create panel and wrap it in a vertical-only scroller
                 LaunchTabPanel panel = new LaunchTabPanel();
-                // wrap each tab in a vertical-only scroller
                 JScrollPane sp = new JScrollPane(
                     panel,
-                    ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                    ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
                     ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
                 );
                 sp.setBorder(null);
+                sp.getVerticalScrollBar().setUnitIncrement(24);
+
                 tabs.addTab(name, sp);
+                int thisIndex = tabs.getTabCount() - 1;
+                if (isSelected) selectedIndex = thisIndex;
 
                 var cellNodes = tabEl.getElementsByTagName("cell");
 
-                // grow once to fit highest index
+                // Grow once to the highest index
                 int maxIndex = -1;
                 for (int j = 0; j < cellNodes.getLength(); j++) {
                     Element cellEl = (Element) cellNodes.item(j);
@@ -120,6 +134,7 @@ public class PersistenceHelper
                     panel.ensureCellIndex(maxIndex);
                 }
 
+                // Place apps
                 for (int j = 0; j < cellNodes.getLength(); j++) {
                     Element cellEl = (Element) cellNodes.item(j);
                     int index = Integer.parseInt(cellEl.getAttribute("index"));
@@ -134,18 +149,14 @@ public class PersistenceHelper
                     }
                 }
             }
+
+            // Restore selected tab (fallback to first tab if missing/invalid)
+            if (tabs.getTabCount() > 0) {
+                tabs.setSelectedIndex(selectedIndex >= 0 && selectedIndex < tabs.getTabCount() ? selectedIndex : 0);
+            }
+
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
-
-    /** Helper: unwrap a LaunchTabPanel from a tab component that might be a JScrollPane. */
-    private static LaunchTabPanel unwrapPanel(java.awt.Component c) {
-        if (c instanceof LaunchTabPanel p) return p;
-        if (c instanceof JScrollPane sp) {
-            var v = (sp.getViewport() != null) ? sp.getViewport().getView() : null;
-            if (v instanceof LaunchTabPanel p) return p;
-        }
-        return null;
     }
 }

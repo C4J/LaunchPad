@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <install4j version="11.0.5" transformSequenceNumber="11">
   <directoryPresets config="./images/icons/LaunchPad_Icons/MyIcon.iconset" />
-  <application name="JLaunchPad" applicationId="9445-8554-6205-3770" mediaDir="../../../../Media/b7/c4j_launchpad/main" shortName="JLaunchPad" publisher="David Garratt" publisherWeb="https://www.commander4j.com" version="1.10" allPathsRelative="true" macVolumeId="94e0b872b10fe68e">
+  <application name="JLaunchPad" applicationId="9445-8554-6205-3770" mediaDir="../../../../Media/b7/c4j_launchpad/main" shortName="JLaunchPad" publisher="David Garratt" publisherWeb="https://www.commander4j.com" version="1.21" allPathsRelative="true" macVolumeId="94e0b872b10fe68e">
     <codeSigning macEnabled="true" macPkcs12File="../../../../Certificates/Certificates.p12" macNotarize="true" macApiIssuer="533a4f47-67e1-47f8-8833-122cf2b02139" macApiKey="57H54R8ALK" macApiPrivateKey="../../../../Certificates/AuthKey_57H54R8ALK.p8" />
     <jreBundles jdkProviderId="Zulu" release="21/21.0.8" />
   </application>
@@ -10,11 +10,11 @@
       <mountPoint id="24" location="images" />
       <mountPoint id="25" location="xml" />
       <mountPoint id="26" location="lib" />
-      <mountPoint id="37" />
       <mountPoint id="44" location="logs" />
+      <mountPoint id="37" />
     </mountPoints>
     <entries>
-      <dirEntry mountPoint="24" file="./images" subDirectory="images">
+      <dirEntry mountPoint="24" file="./images" overwriteMode="0" uninstallMode="1" overrideOverwriteMode="true" overrideUninstallMode="true" subDirectory="images">
         <exclude>
           <entry location=".DS_Store" />
           <entry location="github" />
