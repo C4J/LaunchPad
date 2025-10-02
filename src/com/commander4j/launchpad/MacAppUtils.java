@@ -62,7 +62,7 @@ public class MacAppUtils {
     }
 
     @SuppressWarnings("unused")
-	private static String sha1(String s) {
+    private static String sha1(String s) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-1");
             byte[] d = md.digest(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -194,12 +194,43 @@ public class MacAppUtils {
         if (bundle == null || !bundle.exists()) return null;
 
         try {
-            Path infoPlist = bundle.toPath().resolve("Contents/Info.plist");
+            Path bpath = bundle.toPath();
+            Path infoPlist = bpath.resolve("Contents/Info.plist");
+
+            // ==== NEW BEHAVIOUR: if Info.plist is missing, try manual icon cache first ====
             if (!Files.exists(infoPlist)) {
-                // Minimal fallback component.
-                AppComponent comp = new AppComponent(bundle, new ImageIcon());
+                String displayName = stripAppExtension(bundle.getName());
+                String memKey = canonical(bpath) + "|" + ICON_RENDER_SIZE;
+
+                // 1) memory cache
+                ImageIcon icon = ICON_CACHE.get(memKey);
+
+                // 2) disk cache (manual icon), read RAW without freshness checks
+                if (icon == null) {
+                    Path png = iconCacheFile(bpath);
+                    if (Files.exists(png)) {
+                        try (InputStream in = Files.newInputStream(png)) {
+                            BufferedImage bi = ImageIO.read(in);
+                            if (bi != null) icon = new ImageIcon(bi);
+                        } catch (Exception ignore) {}
+                    }
+                }
+
+                // 3) final fallback: blank icon
+                if (icon == null) {
+                    icon = new ImageIcon();
+                } else {
+                    ICON_CACHE.put(memKey, icon);
+                }
+
+                AppComponent comp = new AppComponent(bundle, displayName, icon);
+                Path pngPath = iconCacheFile(bpath);
+                if (Files.exists(pngPath)) {
+                    comp.setCustomIconPath(pngPath.toString());
+                }
                 return comp;
             }
+            // ==== END NEW BEHAVIOUR ==== //
 
             NSDictionary root = (NSDictionary) PropertyListParser.parse(infoPlist.toFile());
 
@@ -213,7 +244,6 @@ public class MacAppUtils {
                 displayName = stripAppExtension(displayName);
             }
 
-            Path bpath = bundle.toPath();
             String memKey = canonical(bpath) + "|" + ICON_RENDER_SIZE;
 
             // ---- Memory cache ----
@@ -487,7 +517,7 @@ public class MacAppUtils {
         }
         return best;
     }
-    
+
     public static boolean isLikelyUserFacingApp(File bundle) {
         try {
             java.nio.file.Path infoPlist = bundle.toPath().resolve("Contents/Info.plist");
