@@ -53,14 +53,11 @@ public class LaunchCellTransferHandler extends TransferHandler {
             }
 
             if (payload != null && payload.sourceCell != null) {
-                AppComponent moving = payload.sourceCell.getApp();
+                // MOVE the existing component instance safely, without clearing popups from it.
+                AppComponent moving = payload.sourceCell.detachAppForMove();
                 if (moving == null) return false;
 
-                // If somehow dropping back into the same empty cell, do nothing.
-                if (payload.sourceCell == cell) return true;
-
                 cell.setApp(moving);
-                payload.sourceCell.clear();
                 return true;
             }
 
@@ -129,6 +126,6 @@ public class LaunchCellTransferHandler extends TransferHandler {
 
     @Override
     protected void exportDone(JComponent source, Transferable data, int action) {
-        // no-op; we clear the source explicitly on successful MOVE above.
+        // no-op; MOVE is handled inline via detach+setApp
     }
 }

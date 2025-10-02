@@ -127,25 +127,43 @@ public class LaunchCell extends JPanel
         return pm;
     }
 
-
     public boolean isEmpty() { return app == null; }
+
+    /** Reassert the cell’s popup on itself and its current content. */
+    public void reassertPopup() {
+        setComponentPopupMenu(popup);
+        installPopupRecursively(this, popup);
+        if (app != null) {
+            app.setComponentPopupMenu(popup);
+            installPopupRecursively(app, popup);
+        }
+    }
+
+    /** Detach the current app component for a MOVE operation without stripping popups. */
+    public AppComponent detachAppForMove() {
+        if (app == null) return null;
+        AppComponent moving = app;
+        remove(moving);
+        app = null;
+        revalidate();
+        repaint();
+        // Do NOT clear popups here; destination will reassert.
+        return moving;
+    }
 
     public void setApp(AppComponent newApp)
     {
         removeAll();
 
-        if (this.app != null) {
-            this.app.setComponentPopupMenu(null);
-            installPopupRecursively(this.app, null);
-        }
-
+        // Do not strip popups from the previous app; it might be moved elsewhere.
         this.app = newApp;
 
         if (this.app != null) {
             add(this.app, BorderLayout.CENTER);
-            this.app.setComponentPopupMenu(popup);
-            installPopupRecursively(this.app, popup);
         }
+
+        // Ensure right-click works everywhere on the cell and its new content
+        reassertPopup();
 
         revalidate();
         repaint();
@@ -168,11 +186,12 @@ public class LaunchCell extends JPanel
     public void clear()
     {
         removeAll();
-        if (this.app != null) {
-            this.app.setComponentPopupMenu(null);
-            installPopupRecursively(this.app, null);
-        }
+        // Don’t strip popups off the old app; it could be reused/moved elsewhere.
         this.app = null;
+
+        // Keep popup active on the empty cell
+        reassertPopup();
+
         revalidate();
         repaint();
     }

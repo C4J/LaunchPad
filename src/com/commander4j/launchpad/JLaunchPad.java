@@ -54,7 +54,7 @@ public class JLaunchPad extends JFrame
     private Dimension buttonSize = new Dimension(32,32);
     private static int widthadjustment = 0;
     private static int heightadjustment = 0;
-    public static String version = "1.21";
+    public static String version = "1.22";
 
     private final JTabbedPane tabs;
 
@@ -136,12 +136,12 @@ public class JLaunchPad extends JFrame
             int selected = tabs.getSelectedIndex();
             if (selected >=0)
             {
-        		int result = JOptionPane.showConfirmDialog(JLaunchPad.this, "Are you sure you want to remove category '" + tabs.getTitleAt(selected) + "'", "Confirm Remove ?", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE,Common.app_icon_dialog);
+                int result = JOptionPane.showConfirmDialog(JLaunchPad.this, "Are you sure you want to remove category '" + tabs.getTitleAt(selected) + "'", "Confirm Remove ?", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE,Common.app_icon_dialog);
 
-        		if (result == JOptionPane.YES_OPTION)
-        		{
+                if (result == JOptionPane.YES_OPTION)
+                {
                     tabs.remove(selected);
-        		}
+                }
             }
         });
         toolbar.add(deleteTabButton);
@@ -191,46 +191,44 @@ public class JLaunchPad extends JFrame
         packTabButton.setMaximumSize(buttonSize);
         packTabButton.addActionListener(e -> packCurrentTab());
         toolbar.add(packTabButton);
-        
-        
+
         JButton4j btnHelp = new JButton4j(Common.icon_help);
-		btnHelp.setPreferredSize(new Dimension(32, 32));
-		btnHelp.setFocusable(false);
-		btnHelp.setToolTipText("Help");
-		toolbar.add(btnHelp);
+        btnHelp.setPreferredSize(new Dimension(32, 32));
+        btnHelp.setFocusable(false);
+        btnHelp.setToolTipText("Help");
+        toolbar.add(btnHelp);
 
-		final JHelp help = new JHelp();
-		help.enableHelpOnButton(btnHelp, "https://wiki.commander4j.com/index.php?title=LaunchPad");
+        final JHelp help = new JHelp();
+        help.enableHelpOnButton(btnHelp, "https://wiki.commander4j.com/index.php?title=LaunchPad");
 
-		JButton4j btnAbout = new JButton4j(Common.icon_about);
-		btnAbout.setPreferredSize(new Dimension(32, 32));
-		btnAbout.setFocusable(false);
-		btnAbout.setToolTipText("About");
-		btnAbout.addActionListener(new ActionListener()
-		{
-			public void actionPerformed(ActionEvent e)
-			{
-				JDialogAbout about = new JDialogAbout();
-				about.setVisible(true);
-			}
-		});
-		toolbar.add(btnAbout);
+        JButton4j btnAbout = new JButton4j(Common.icon_about);
+        btnAbout.setPreferredSize(new Dimension(32, 32));
+        btnAbout.setFocusable(false);
+        btnAbout.setToolTipText("About");
+        btnAbout.addActionListener(new ActionListener()
+        {
+            public void actionPerformed(ActionEvent e)
+            {
+                JDialogAbout about = new JDialogAbout();
+                about.setVisible(true);
+            }
+        });
+        toolbar.add(btnAbout);
 
-		JButton4j btnLicense = new JButton4j(Common.icon_license);
-		btnLicense.setPreferredSize(new Dimension(32, 32));
-		btnLicense.setFocusable(false);
-		btnLicense.setToolTipText("Licences");
-		btnLicense.addActionListener(new ActionListener()
-		{
-			public void actionPerformed(ActionEvent e)
-			{
-				JDialogLicenses dl = new JDialogLicenses(JLaunchPad.this);
-				dl.setVisible(true);
-			}
-		});
+        JButton4j btnLicense = new JButton4j(Common.icon_license);
+        btnLicense.setPreferredSize(new Dimension(32, 32));
+        btnLicense.setFocusable(false);
+        btnLicense.setToolTipText("Licences");
+        btnLicense.addActionListener(new ActionListener()
+        {
+            public void actionPerformed(ActionEvent e)
+            {
+                JDialogLicenses dl = new JDialogLicenses(JLaunchPad.this);
+                dl.setVisible(true);
+            }
+        });
 
-		toolbar.add(btnLicense);
-
+        toolbar.add(btnLicense);
 
         JButton4j exitTabButton = new JButton4j(Common.icon_exit);
         exitTabButton.setToolTipText("Exit");
@@ -248,6 +246,9 @@ public class JLaunchPad extends JFrame
 
         // Ensure all existing tab components (added by loadState) have our drop handler
         attachDropHandlerToAllTabComponents(sharedDropHandler);
+
+        // Reassert popups on all cells after load (so right-click works immediately)
+        reassertPopupsAllTabs();
 
         // If no tabs loaded, add a default
         if (tabs.getTabCount() == 0)
@@ -313,6 +314,18 @@ public class JLaunchPad extends JFrame
         }
     }
 
+    /** Reassert popups on all cells in all tabs (post-load hardening). */
+    private void reassertPopupsAllTabs() {
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            LaunchTabPanel p = panelFromTabIndex(i);
+            if (p == null) continue;
+            for (java.awt.Component c : p.getComponents()) {
+                if (c instanceof LaunchCell lc) {
+                    lc.reassertPopup();
+                }
+            }
+        }
+    }
 
     /** Return the currently selected LaunchTabPanel or null. */
     private LaunchTabPanel currentPanel() {
@@ -660,7 +673,8 @@ public class JLaunchPad extends JFrame
                 if (app != null)
                 {
                     empty.setApp(app);
-                    // If this was an internal MOVE, clear the source cell
+                    // If this was an internal MOVE (we create a fresh component here),
+                    // it is still safe to clear the source cell.
                     if (payload != null && payload.sourceCell != null) {
                         payload.sourceCell.clear();
                     }
