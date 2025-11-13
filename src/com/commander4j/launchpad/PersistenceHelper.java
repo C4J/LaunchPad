@@ -135,9 +135,14 @@ public class PersistenceHelper
                 }
 
                 // Place apps
+                int lastIndexAssigned = -1;
                 for (int j = 0; j < cellNodes.getLength(); j++) {
                     Element cellEl = (Element) cellNodes.item(j);
                     int index = Integer.parseInt(cellEl.getAttribute("index"));
+                    if (index != (lastIndexAssigned+1))
+                    {
+                    	index = lastIndexAssigned+1;
+                    }
                     String path  = cellEl.getAttribute("path");
 
                     File bundle = new File(path);
@@ -145,6 +150,7 @@ public class PersistenceHelper
                         AppComponent app = MacAppUtils.createAppComponent(bundle);
                         if (app != null) {
                             ((LaunchCell) panel.getComponent(index)).setApp(app);
+                            lastIndexAssigned++;
                         }
                     }
                 }
