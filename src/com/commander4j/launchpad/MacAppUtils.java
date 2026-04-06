@@ -111,7 +111,11 @@ public class MacAppUtils {
         if (!diskIconFresh(bundle, png)) return null;
         try (InputStream in = Files.newInputStream(png)) {
             BufferedImage bi = ImageIO.read(in);
-            return (bi != null) ? new ImageIcon(bi) : null;
+            if (bi == null) return null;
+            // Reject blank icons cached before the visibility-check code was added.
+            // This triggers a one-time re-resolution via NSWorkspace for affected apps.
+            if (!hasVisibleContent(bi)) { Files.deleteIfExists(png); return null; }
+            return new ImageIcon(bi);
         } catch (Exception e) {
             return null;
         }
@@ -183,6 +187,40 @@ public class MacAppUtils {
         ICON_CACHE.put(memKey, new ImageIcon(scaled));
 
         return new ImageIcon(scaled);
+    }
+
+    /**
+     * Force-refreshes the icon for the given bundle: evicts both caches, re-resolves using the
+     * full strategy (ICNS → iOS PNGs → NSWorkspace → QuickLook → system icon), saves the result
+     * to the disk cache, and returns the new ImageIcon.  Returns null only if all strategies fail.
+     *
+     * Safe to call from a background thread; does NOT touch Swing components.
+     */
+    public static ImageIcon refreshIcon(File bundle) {
+        if (bundle == null || !bundle.exists()) return null;
+        evictIcon(bundle);                          // clear stale/wrong cached result
+        try {
+            Path bpath = bundle.toPath();
+            Path infoPlist = bpath.resolve("Contents/Info.plist");
+            if (!Files.exists(infoPlist)) return null;
+
+            NSDictionary root = (NSDictionary) PropertyListParser.parse(infoPlist.toFile());
+
+            ImageIcon icon = resolveIconAtAddTime(bpath, root, ICON_RENDER_SIZE);
+            if (icon == null) return null;
+
+            // Populate both caches so subsequent loads are fast
+            String memKey = canonical(bpath) + "|" + ICON_RENDER_SIZE;
+            ICON_CACHE.put(memKey, icon);
+
+            BufferedImage bi = iconToBuffered(icon);
+            if (bi != null && bi.getWidth() > 0) saveIconToDisk(bpath, bi);
+
+            return icon;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     /* ===================== Main API ===================== */
@@ -286,23 +324,37 @@ public class MacAppUtils {
 
     /* ===================== Resolve-at-add-time strategy ===================== */
 
-    // Order: .icns → iOS PNGs → (Assets.car) Quick Look → System icon
+    // Order: NSWorkspace (Assets.car apps) → .icns → iOS PNGs → NSWorkspace (non-Assets.car) → Quick Look → System icon
     private static ImageIcon resolveIconAtAddTime(Path bundle, NSDictionary root, int renderSize) {
-        // 1) Classic .icns
+        // 1) For apps with Assets.car, NSWorkspace is authoritative: it applies the proper macOS
+        //    icon rendering, including the rounded-rectangle treatment for iOS-on-Mac apps.
+        //    ICNS files in these bundles are often raw/unstyled stubs.
+        if (hasAssetsCar(bundle)) {
+            ImageIcon nsw = tryNSWorkspaceIcon(bundle, renderSize);
+            if (nsw != null && nsw.getIconWidth() > 0) return nsw;
+        }
+
+        // 2) Classic .icns – skip transparent stubs (some system apps ship blank ICNS placeholders)
         BufferedImage icns = tryIcnsImage(bundle, root, renderSize);
-        if (icns != null) return new ImageIcon(icns);
+        if (icns != null && hasVisibleContent(icns)) return new ImageIcon(icns);
 
-        // 2) iOS PNG list (CFBundleIcons)
+        // 3) iOS PNG list (CFBundleIcons)
         BufferedImage ios = tryIosPngImage(bundle, root, renderSize);
-        if (ios != null) return new ImageIcon(ios);
+        if (ios != null && hasVisibleContent(ios)) return new ImageIcon(ios);
 
-        // 3) Assets.car present? Use Quick Look to render the app icon (CoreUI reads Assets.car)
+        // 4) NSWorkspace fallback for apps without Assets.car
+        if (!hasAssetsCar(bundle)) {
+            ImageIcon nsw = tryNSWorkspaceIcon(bundle, renderSize);
+            if (nsw != null && nsw.getIconWidth() > 0) return nsw;
+        }
+
+        // 5) Quick Look as additional fallback
         if (hasAssetsCar(bundle)) {
             ImageIcon ql = tryQuickLookAppIcon(bundle, renderSize, /*timeoutMs*/ 2500);
             if (ql != null && ql.getIconWidth() > 0) return ql;
         }
 
-        // 4) Last resort: system icon (may look like a folder)
+        // 6) Last resort: system icon (may look like a folder)
         BufferedImage sys = trySystemIconImage(bundle, renderSize);
         if (sys != null) return new ImageIcon(sys);
 
@@ -316,8 +368,12 @@ public class MacAppUtils {
     /* ---------- .icns ---------- */
     private static BufferedImage tryIcnsImage(Path bundle, NSDictionary root, int renderSize) {
         try {
+            // Prefer CFBundleIconFile; fall back to CFBundleIconName (used by modern apps like BBEdit)
             String iconName = root.containsKey("CFBundleIconFile")
-                    ? root.objectForKey("CFBundleIconFile").toString() : null;
+                    ? root.objectForKey("CFBundleIconFile").toString()
+                    : root.containsKey("CFBundleIconName")
+                    ? root.objectForKey("CFBundleIconName").toString()
+                    : null;
             if (iconName == null) return null;
             if (!iconName.toLowerCase(Locale.ROOT).endsWith(".icns")) iconName += ".icns";
             Path icnsPath = bundle.resolve("Contents/Resources").resolve(iconName);
@@ -453,6 +509,93 @@ public class MacAppUtils {
             return new ImageIcon(scaled);
 
         } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    /* ---------- Visible-content guard ---------- */
+
+    /**
+     * Returns true if the image contains enough non-transparent pixels to be a real icon.
+     * System and iOS-on-Mac apps ship stub ICNS files that are nearly or fully transparent;
+     * their real icons live in Assets.car and must be fetched via NSWorkspace.
+     */
+    private static boolean hasVisibleContent(BufferedImage img) {
+        if (img == null) return false;
+        int w = img.getWidth(), h = img.getHeight();
+        if (w <= 0 || h <= 0) return false;
+        // Require at least 0.5% of pixels to be non-transparent (alpha > 10/255).
+        int threshold = Math.max(10, (w * h) / 200);
+        int opaque = 0;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                if ((img.getRGB(x, y) >>> 24) > 10 && ++opaque >= threshold) return true;
+            }
+        }
+        return false;
+    }
+
+    /* ---------- NSWorkspace icon (macOS native) ---------- */
+
+    /**
+     * Extracts the app icon via macOS NSWorkspace using an osascript JXA one-liner.
+     * This is the most reliable method: it reads from Assets.car, handles iOS-on-Mac apps,
+     * and matches exactly what Finder/Dock display.  Requires macOS; no-ops on other platforms.
+     */
+    private static ImageIcon tryNSWorkspaceIcon(Path bundle, int renderSize) {
+        try {
+            String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+            if (!os.contains("mac")) return null;
+
+            Path osa = Paths.get("/usr/bin/osascript");
+            if (!Files.isExecutable(osa)) return null;
+
+            Path outPng = Files.createTempFile("lp-nsw-", ".png");
+            try {
+                // Ask for at least 256 px so downscaling gives a crisp result.
+                int dim = Math.max(renderSize, 256);
+                String bundlePath = bundle.toAbsolutePath().toString().replace("'", "\\'");
+                String pngPath    = outPng.toAbsolutePath().toString().replace("'", "\\'");
+
+                String script =
+                    "ObjC.import('AppKit');" +
+                    "var w=$.NSWorkspace.sharedWorkspace;" +
+                    "var icon=w.iconForFile('" + bundlePath + "');" +
+                    "icon.setSize({width:" + dim + ",height:" + dim + "});" +
+                    "var tiff=icon.TIFFRepresentation;" +
+                    "var rep=$.NSBitmapImageRep.imageRepWithData(tiff);" +
+                    "var png=rep.representationUsingTypeProperties(" +
+                    "$.NSBitmapImageFileTypePNG,$.NSDictionary.dictionary);" +
+                    "png.writeToFileAtomically('" + pngPath + "',true);" +
+                    "'done'";
+
+                ProcessBuilder pb = new ProcessBuilder(osa.toString(), "-l", "JavaScript", "-e", script)
+                        .redirectErrorStream(true);
+                Process proc = pb.start();
+
+                ExecutorService drainer = Executors.newSingleThreadExecutor(r -> {
+                    Thread th = new Thread(r, "nsw-drain"); th.setDaemon(true); return th;
+                });
+                drainer.submit(() -> {
+                    byte[] buf = new byte[4096];
+                    try (InputStream in = proc.getInputStream()) { while (in.read(buf) != -1) {} }
+                    catch (Exception ignore) {}
+                });
+
+                boolean finished = proc.waitFor(4000, TimeUnit.MILLISECONDS);
+                drainer.shutdownNow();
+                if (!finished) { proc.destroyForcibly(); return null; }
+
+                if (!Files.exists(outPng) || Files.size(outPng) == 0) return null;
+
+                BufferedImage img = ImageIO.read(outPng.toFile());
+                if (img == null || !hasVisibleContent(img)) return null;
+                return new ImageIcon(scaleToSquare(img, renderSize));
+
+            } finally {
+                Files.deleteIfExists(outPng);
+            }
+        } catch (Exception ignore) {
             return null;
         }
     }

@@ -8,7 +8,9 @@ package com.commander4j.launchpad;
  *******************************************************************************/
 
 import java.awt.BorderLayout;
+import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.Window;
 import java.awt.event.KeyEvent;
 import java.io.File;
 
@@ -18,9 +20,12 @@ import javax.swing.ImageIcon;
 import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.KeyStroke;
+import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 import javax.swing.event.PopupMenuEvent;
 import javax.swing.event.PopupMenuListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -108,6 +113,49 @@ public class LaunchCell extends JPanel
             }
         });
         pm.add(assignIcon);
+
+        JMenuItem refreshIcon = new JMenuItem("Refresh Icon");
+        refreshIcon.addActionListener(e -> {
+            AppComponent a = getApp();
+            if (a == null) return;
+
+            File bundle = new File(a.getAppPath());
+
+            // Switch to wait cursor while the background resolution runs
+            Window win = SwingUtilities.getWindowAncestor(this);
+            Cursor savedCursor = (win != null) ? win.getCursor() : null;
+            if (win != null) win.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+            refreshIcon.setEnabled(false);
+
+            new SwingWorker<ImageIcon, Void>() {
+                @Override
+                protected ImageIcon doInBackground() {
+                    return MacAppUtils.refreshIcon(bundle);
+                }
+                @Override
+                protected void done() {
+                    if (win != null) win.setCursor(savedCursor != null
+                            ? savedCursor : Cursor.getDefaultCursor());
+                    refreshIcon.setEnabled(true);
+                    try {
+                        ImageIcon icon = get();
+                        if (icon != null) {
+                            a.setIcon(icon);
+                            a.setCustomIconPath(MacAppUtils.getCachedIconPathForBundle(bundle));
+                            revalidate();
+                            repaint();
+                        } else {
+                            JOptionPane.showMessageDialog(LaunchCell.this,
+                                "Could not resolve a better icon for \"" + a.getDisplayName() + "\".",
+                                "Refresh Icon", JOptionPane.INFORMATION_MESSAGE);
+                        }
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                }
+            }.execute();
+        });
+        pm.add(refreshIcon);
 
         JMenuItem remove = new JMenuItem("Remove App");
         remove.addActionListener(e -> { if (!isEmpty()) clear(); });
