@@ -30,6 +30,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
+import java.awt.Cursor;
+import java.awt.Window;
+
+import javax.swing.ImageIcon;
 import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
@@ -39,6 +43,7 @@ import javax.swing.JTabbedPane;
 import javax.swing.JToolBar;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 import javax.swing.TransferHandler;
 
 import com.commander4j.dialog.JDialogAbout;
@@ -54,7 +59,7 @@ public class JLaunchPad extends JFrame
     private Dimension buttonSize = new Dimension(32,32);
     private static int widthadjustment = 0;
     private static int heightadjustment = 0;
-    public static String version = "1.30";
+    public static String version = "1.31";
 
     private final JTabbedPane tabs;
 
@@ -191,6 +196,14 @@ public class JLaunchPad extends JFrame
         packTabButton.setMaximumSize(buttonSize);
         packTabButton.addActionListener(e -> packCurrentTab());
         toolbar.add(packTabButton);
+
+        // --- Refresh All Icons on current tab ---
+        JButton4j refreshAllButton = new JButton4j(Common.icon_reload);
+        refreshAllButton.setToolTipText("Refresh All Icons on Current Category.");
+        refreshAllButton.setPreferredSize(buttonSize);
+        refreshAllButton.setMaximumSize(buttonSize);
+        refreshAllButton.addActionListener(e -> refreshAllIconsOnCurrentTab(refreshAllButton));
+        toolbar.add(refreshAllButton);
 
         JButton4j btnHelp = new JButton4j(Common.icon_help);
         btnHelp.setPreferredSize(new Dimension(32, 32));
@@ -567,6 +580,50 @@ public class JLaunchPad extends JFrame
         LaunchTabPanel panel = currentPanel();
         if (panel == null) return;
         panel.packIcons();
+    }
+
+    private void refreshAllIconsOnCurrentTab(JButton4j triggerButton) {
+        LaunchTabPanel panel = currentPanel();
+        if (panel == null) return;
+
+        // Collect all occupied cells up-front on the EDT
+        List<LaunchCell> occupied = new ArrayList<>();
+        for (int i = 0; i < panel.getComponentCount(); i++) {
+            if (panel.getComponent(i) instanceof LaunchCell cell && !cell.isEmpty()) {
+                occupied.add(cell);
+            }
+        }
+        if (occupied.isEmpty()) return;
+
+        triggerButton.setEnabled(false);
+        Window win = SwingUtilities.getWindowAncestor(this);
+        if (win != null) win.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() {
+                for (LaunchCell cell : occupied) {
+                    AppComponent app = cell.getApp();
+                    if (app == null) continue;
+                    File bundle = new File(app.getAppPath());
+                    ImageIcon icon = MacAppUtils.refreshIcon(bundle);
+                    if (icon != null) {
+                        SwingUtilities.invokeLater(() -> {
+                            app.setIcon(icon);
+                            app.setCustomIconPath(MacAppUtils.getCachedIconPathForBundle(bundle));
+                            cell.revalidate();
+                            cell.repaint();
+                        });
+                    }
+                }
+                return null;
+            }
+            @Override
+            protected void done() {
+                if (win != null) win.setCursor(Cursor.getDefaultCursor());
+                triggerButton.setEnabled(true);
+            }
+        }.execute();
     }
 
     /**

@@ -198,18 +198,32 @@ public class MacAppUtils {
      */
     public static ImageIcon refreshIcon(File bundle) {
         if (bundle == null || !bundle.exists()) return null;
-        evictIcon(bundle);                          // clear stale/wrong cached result
+        // NOTE: do NOT evict caches here. If resolution fails we must leave the existing
+        // cached icon intact so the app continues to display something on next load.
         try {
             Path bpath = bundle.toPath();
             Path infoPlist = bpath.resolve("Contents/Info.plist");
-            if (!Files.exists(infoPlist)) return null;
+
+            // iOS wrapper apps have no Contents/Info.plist; NSWorkspace is the only option.
+            if (!Files.exists(infoPlist)) {
+                if (!isIosWrapperBundle(bpath)) return null;
+                ImageIcon icon = tryNSWorkspaceIcon(bpath, ICON_RENDER_SIZE);
+                if (icon == null) return null;
+                String memKey = canonical(bpath) + "|" + ICON_RENDER_SIZE;
+                ICON_CACHE.put(memKey, icon);
+                BufferedImage bi = iconToBuffered(icon);
+                if (bi != null && bi.getWidth() > 0) saveIconToDisk(bpath, bi);
+                return icon;
+            }
 
             NSDictionary root = (NSDictionary) PropertyListParser.parse(infoPlist.toFile());
 
+            // resolveIconAtAddTime goes straight to the resolution strategies; it does not
+            // read from the memory or disk cache, so no eviction is needed before calling it.
             ImageIcon icon = resolveIconAtAddTime(bpath, root, ICON_RENDER_SIZE);
-            if (icon == null) return null;
+            if (icon == null) return null;   // leave existing caches untouched
 
-            // Populate both caches so subsequent loads are fast
+            // Resolution succeeded: now replace both caches with the fresh result.
             String memKey = canonical(bpath) + "|" + ICON_RENDER_SIZE;
             ICON_CACHE.put(memKey, icon);
 
@@ -235,40 +249,61 @@ public class MacAppUtils {
             Path bpath = bundle.toPath();
             Path infoPlist = bpath.resolve("Contents/Info.plist");
 
-            // ==== NEW BEHAVIOUR: if Info.plist is missing, try manual icon cache first ====
+            // ==== iOS wrapper bundle (Wrapper/<Name>.app): no Contents/Info.plist ====
             if (!Files.exists(infoPlist)) {
+                // Try to get the display name from the inner bundle's Info.plist
                 String displayName = stripAppExtension(bundle.getName());
+                try {
+                    try (var s = Files.list(bpath.resolve("Wrapper"))) {
+                        Path innerApp = s.filter(p -> p.getFileName().toString().endsWith(".app")).findFirst().orElse(null);
+                        if (innerApp != null) {
+                            Path innerPlist = innerApp.resolve("Info.plist");
+                            if (Files.exists(innerPlist)) {
+                                NSDictionary innerRoot = (NSDictionary) PropertyListParser.parse(innerPlist.toFile());
+                                if (innerRoot.containsKey("CFBundleDisplayName"))
+                                    displayName = innerRoot.objectForKey("CFBundleDisplayName").toString();
+                                else if (innerRoot.containsKey("CFBundleName"))
+                                    displayName = innerRoot.objectForKey("CFBundleName").toString();
+                            }
+                        }
+                    }
+                } catch (Exception ignore) {}
+
                 String memKey = canonical(bpath) + "|" + ICON_RENDER_SIZE;
 
                 // 1) memory cache
                 ImageIcon icon = ICON_CACHE.get(memKey);
 
-                // 2) disk cache (manual icon), read RAW without freshness checks
+                // 2) disk cache (valid cached icon from a previous run)
                 if (icon == null) {
                     Path png = iconCacheFile(bpath);
                     if (Files.exists(png)) {
                         try (InputStream in = Files.newInputStream(png)) {
                             BufferedImage bi = ImageIO.read(in);
-                            if (bi != null) icon = new ImageIcon(bi);
+                            if (bi != null && hasVisibleContent(bi)) icon = new ImageIcon(bi);
                         } catch (Exception ignore) {}
                     }
                 }
 
-                // 3) final fallback: blank icon
+                // 3) NSWorkspace — the only reliable source for iOS wrapper apps
                 if (icon == null) {
-                    icon = new ImageIcon();
-                } else {
-                    ICON_CACHE.put(memKey, icon);
+                    icon = tryNSWorkspaceIcon(bpath, ICON_RENDER_SIZE);
+                    if (icon != null) {
+                        ICON_CACHE.put(memKey, icon);
+                        BufferedImage bi = iconToBuffered(icon);
+                        if (bi != null && bi.getWidth() > 0) saveIconToDisk(bpath, bi);
+                    }
                 }
+
+                // 4) final fallback: blank placeholder
+                if (icon == null) icon = new ImageIcon();
 
                 AppComponent comp = new AppComponent(bundle, displayName, icon);
                 Path pngPath = iconCacheFile(bpath);
-                if (Files.exists(pngPath)) {
-                    comp.setCustomIconPath(pngPath.toString());
-                }
+                if (Files.exists(pngPath)) comp.setCustomIconPath(pngPath.toString());
                 return comp;
             }
-            // ==== END NEW BEHAVIOUR ==== //
+            // ==== END iOS wrapper handling ==== //
 
             NSDictionary root = (NSDictionary) PropertyListParser.parse(infoPlist.toFile());
 
@@ -661,10 +696,29 @@ public class MacAppUtils {
         return best;
     }
 
+    /**
+     * Returns true if a directory under the given path matches the iOS-wrapper layout:
+     * Wrapper/<something>.app  (pure iOS apps installed on Apple Silicon).
+     */
+    private static boolean isIosWrapperBundle(java.nio.file.Path bundle) {
+        java.nio.file.Path wrapper = bundle.resolve("Wrapper");
+        if (!java.nio.file.Files.isDirectory(wrapper)) return false;
+        try (var s = java.nio.file.Files.list(wrapper)) {
+            return s.anyMatch(p -> p.getFileName().toString().endsWith(".app")
+                               && java.nio.file.Files.isDirectory(p));
+        } catch (Exception e) { return false; }
+    }
+
     public static boolean isLikelyUserFacingApp(File bundle) {
         try {
-            java.nio.file.Path infoPlist = bundle.toPath().resolve("Contents/Info.plist");
-            if (!java.nio.file.Files.exists(infoPlist)) return false;
+            java.nio.file.Path bpath = bundle.toPath();
+            java.nio.file.Path infoPlist = bpath.resolve("Contents/Info.plist");
+
+            // iOS wrapper apps (pure iOS on Apple Silicon) have no Contents/Info.plist;
+            // their real bundle sits at Wrapper/<Name>.app.  Include them in the scan.
+            if (!java.nio.file.Files.exists(infoPlist)) {
+                return isIosWrapperBundle(bpath);
+            }
 
             com.dd.plist.NSDictionary root = (com.dd.plist.NSDictionary) com.dd.plist.PropertyListParser.parse(infoPlist.toFile());
 

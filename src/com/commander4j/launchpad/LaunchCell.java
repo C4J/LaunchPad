@@ -20,7 +20,6 @@ import javax.swing.ImageIcon;
 import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JMenuItem;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.KeyStroke;
@@ -144,10 +143,6 @@ public class LaunchCell extends JPanel
                             a.setCustomIconPath(MacAppUtils.getCachedIconPathForBundle(bundle));
                             revalidate();
                             repaint();
-                        } else {
-                            JOptionPane.showMessageDialog(LaunchCell.this,
-                                "Could not resolve a better icon for \"" + a.getDisplayName() + "\".",
-                                "Refresh Icon", JOptionPane.INFORMATION_MESSAGE);
                         }
                     } catch (Exception ex) {
                         ex.printStackTrace();
