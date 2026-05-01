@@ -521,7 +521,7 @@ public class MacAppUtils {
             }
             drainer.shutdownNow();
 
-            File[] pngs = outDir.toFile().listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(".png"));
+            File[] pngs = outDir.toFile().listFiles((_, name) -> name.toLowerCase(Locale.ROOT).endsWith(".png"));
             if (pngs == null || pngs.length == 0) return null;
 
             // choose newest after we started

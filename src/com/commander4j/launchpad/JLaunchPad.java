@@ -59,7 +59,7 @@ public class JLaunchPad extends JFrame
     private Dimension buttonSize = new Dimension(32,32);
     private static int widthadjustment = 0;
     private static int heightadjustment = 0;
-    public static String version = "1.31";
+    public static String version = "2.00";
 
     private final JTabbedPane tabs;
 
@@ -97,7 +97,7 @@ public class JLaunchPad extends JFrame
         addTabButton.setSize(buttonSize);
         addTabButton.setPreferredSize(buttonSize);
         addTabButton.setMaximumSize(buttonSize);
-        addTabButton.addActionListener(e -> {
+        addTabButton.addActionListener(_ -> {
             String name = JOptionPane.showInputDialog(JLaunchPad.this, "Category name:");
             if (name != null && !name.isBlank())
             {
@@ -118,7 +118,7 @@ public class JLaunchPad extends JFrame
         editTabButton.setPreferredSize(buttonSize);
         editTabButton.setSize(buttonSize);
         editTabButton.setMaximumSize(buttonSize);
-        editTabButton.addActionListener(e -> {
+        editTabButton.addActionListener(_ -> {
             int selected = tabs.getSelectedIndex();
             if (selected >=0)
             {
@@ -137,7 +137,7 @@ public class JLaunchPad extends JFrame
         deleteTabButton.setPreferredSize(buttonSize);
         deleteTabButton.setSize(buttonSize);
         deleteTabButton.setMaximumSize(buttonSize);
-        deleteTabButton.addActionListener(e -> {
+        deleteTabButton.addActionListener(_ -> {
             int selected = tabs.getSelectedIndex();
             if (selected >=0)
             {
@@ -156,7 +156,7 @@ public class JLaunchPad extends JFrame
         moveTabUpButton.setPreferredSize(buttonSize);
         moveTabUpButton.setSize(buttonSize);
         moveTabUpButton.setMaximumSize(buttonSize);
-        moveTabUpButton.addActionListener(e -> {
+        moveTabUpButton.addActionListener(_ -> {
             int selected = tabs.getSelectedIndex();
             if (selected >=0) moveSelectedTabUp();
         });
@@ -167,7 +167,7 @@ public class JLaunchPad extends JFrame
         moveTabDownButton.setPreferredSize(buttonSize);
         moveTabDownButton.setSize(buttonSize);
         moveTabDownButton.setMaximumSize(buttonSize);
-        moveTabDownButton.addActionListener(e -> {
+        moveTabDownButton.addActionListener(_ -> {
             int selected = tabs.getSelectedIndex();
             if (selected >=0) moveSelectedTabDown();
         });
@@ -178,7 +178,7 @@ public class JLaunchPad extends JFrame
         addAppButton.setToolTipText("Add Application…");
         addAppButton.setPreferredSize(buttonSize);
         addAppButton.setMaximumSize(buttonSize);
-        addAppButton.addActionListener(e -> addSingleAppViaChooser());
+        addAppButton.addActionListener(_ -> addSingleAppViaChooser());
         toolbar.add(addAppButton);
 
         // --- Import Folder (all .app recursively) ---
@@ -186,7 +186,7 @@ public class JLaunchPad extends JFrame
         importFolderButton.setToolTipText("Import Applications from Folder to current Category…");
         importFolderButton.setPreferredSize(buttonSize);
         importFolderButton.setMaximumSize(buttonSize);
-        importFolderButton.addActionListener(e -> importAppsFromFolderViaChooser());
+        importFolderButton.addActionListener(_ -> importAppsFromFolderViaChooser());
         toolbar.add(importFolderButton);
 
         // --- Pack Tab (defragment current tab) ---
@@ -194,7 +194,7 @@ public class JLaunchPad extends JFrame
         packTabButton.setToolTipText("Pack Icons on This Category (remove spaces).");
         packTabButton.setPreferredSize(buttonSize);
         packTabButton.setMaximumSize(buttonSize);
-        packTabButton.addActionListener(e -> packCurrentTab());
+        packTabButton.addActionListener(_ -> packCurrentTab());
         toolbar.add(packTabButton);
 
         // --- Refresh All Icons on current tab ---
@@ -202,7 +202,7 @@ public class JLaunchPad extends JFrame
         refreshAllButton.setToolTipText("Refresh All Icons on Current Category.");
         refreshAllButton.setPreferredSize(buttonSize);
         refreshAllButton.setMaximumSize(buttonSize);
-        refreshAllButton.addActionListener(e -> refreshAllIconsOnCurrentTab(refreshAllButton));
+        refreshAllButton.addActionListener(_ -> refreshAllIconsOnCurrentTab(refreshAllButton));
         toolbar.add(refreshAllButton);
 
         JButton4j btnHelp = new JButton4j(Common.icon_help);
@@ -248,7 +248,7 @@ public class JLaunchPad extends JFrame
         exitTabButton.setPreferredSize(buttonSize);
         exitTabButton.setSize(buttonSize);
         exitTabButton.setMaximumSize(buttonSize);
-        exitTabButton.addActionListener(e -> {
+        exitTabButton.addActionListener(_ -> {
             PersistenceHelper.saveState(tabs);
             dispose();
         });

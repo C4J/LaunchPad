@@ -174,7 +174,7 @@ public class ICNSUtils {
                 return ImageIO.read(outPng);
             } else {
                 // qlmanage names the output as <name>.icns.png typically
-                File[] pngs = tmpDir.listFiles((dir, name) -> name.startsWith(icnsFile.getName()) && name.endsWith(".png"));
+                File[] pngs = tmpDir.listFiles((_, name) -> name.startsWith(icnsFile.getName()) && name.endsWith(".png"));
                 if (pngs != null && pngs.length > 0) {
                     Arrays.sort(pngs, Comparator.comparingLong(File::lastModified).reversed());
                     return ImageIO.read(pngs[0]);

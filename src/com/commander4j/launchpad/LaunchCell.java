@@ -74,7 +74,7 @@ public class LaunchCell extends JPanel
         JPopupMenu pm = new JPopupMenu();
 
         JMenuItem assignIcon = new JMenuItem("Assign Custom Icon...");
-        assignIcon.addActionListener(e -> {
+        assignIcon.addActionListener(_ -> {
             AppComponent a = getApp();
             if (a == null) return;
 
@@ -114,7 +114,7 @@ public class LaunchCell extends JPanel
         pm.add(assignIcon);
 
         JMenuItem refreshIcon = new JMenuItem("Refresh Icon");
-        refreshIcon.addActionListener(e -> {
+        refreshIcon.addActionListener(_ -> {
             AppComponent a = getApp();
             if (a == null) return;
 
@@ -153,11 +153,11 @@ public class LaunchCell extends JPanel
         pm.add(refreshIcon);
 
         JMenuItem remove = new JMenuItem("Remove App");
-        remove.addActionListener(e -> { if (!isEmpty()) clear(); });
+        remove.addActionListener(_ -> { if (!isEmpty()) clear(); });
         pm.add(remove);
 
         JMenuItem reveal = new JMenuItem("Reveal in Finder");
-        reveal.addActionListener(e -> {
+        reveal.addActionListener(_ -> {
             AppComponent a = getApp();
             if (a != null) {
                 try {
