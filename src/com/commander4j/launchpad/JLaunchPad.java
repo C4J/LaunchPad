@@ -28,6 +28,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.stream.Stream;
 
 import java.awt.Cursor;
@@ -59,7 +62,7 @@ public class JLaunchPad extends JFrame
     private Dimension buttonSize = new Dimension(32,32);
     private static int widthadjustment = 0;
     private static int heightadjustment = 0;
-    public static String version = "2.01";
+    public static String version = "2.02";
 
     private final JTabbedPane tabs;
 
@@ -299,6 +302,70 @@ public class JLaunchPad extends JFrame
             JLaunchPad.this.getHeight() + heightadjustment
         );
         setVisible(true);
+
+        // Window is up with last-known cached icons. Now bring icons up to date in the
+        // background, touching only apps whose bundles have actually changed since the cache
+        // was written. Scheduled on the EDT because it reads Swing component state.
+        SwingUtilities.invokeLater(this::startBackgroundIconRefresh);
+    }
+
+    /**
+     * After the window is visible, walk every occupied cell and re-resolve the icon ONLY for
+     * apps whose bundle has changed since its cached PNG was written (MacAppUtils.needsIconRefresh).
+     * Resolution (which may spawn osascript/qlmanage) runs off the EDT on a small bounded pool so
+     * we never fire hundreds of subprocesses at once; each result is pushed back via invokeLater.
+     */
+    private void startBackgroundIconRefresh() {
+        // Collect occupied cells across all tabs on the EDT.
+        final List<LaunchCell> occupied = new ArrayList<>();
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            LaunchTabPanel p = panelFromTabIndex(i);
+            if (p == null) continue;
+            for (int c = 0; c < p.getComponentCount(); c++) {
+                if (p.getComponent(c) instanceof LaunchCell cell && !cell.isEmpty()) {
+                    occupied.add(cell);
+                }
+            }
+        }
+        if (occupied.isEmpty()) return;
+
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() {
+                int threads = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
+                ExecutorService pool = Executors.newFixedThreadPool(threads, r -> {
+                    Thread th = new Thread(r, "lp-icon-refresh");
+                    th.setDaemon(true);
+                    return th;
+                });
+                try {
+                    List<Future<?>> futures = new ArrayList<>();
+                    for (LaunchCell cell : occupied) {
+                        final AppComponent app = cell.getApp();
+                        if (app == null) continue;
+                        final File bundle = new File(app.getAppPath());
+                        if (!MacAppUtils.needsIconRefresh(bundle)) continue; // only refresh if changed
+                        futures.add(pool.submit(() -> {
+                            ImageIcon icon = MacAppUtils.refreshIcon(bundle);
+                            if (icon != null) {
+                                SwingUtilities.invokeLater(() -> {
+                                    app.setIcon(icon);
+                                    app.setCustomIconPath(MacAppUtils.getCachedIconPathForBundle(bundle));
+                                    cell.revalidate();
+                                    cell.repaint();
+                                });
+                            }
+                        }));
+                    }
+                    for (Future<?> f : futures) {
+                        try { f.get(); } catch (Exception ignore) {}
+                    }
+                } finally {
+                    pool.shutdown();
+                }
+                return null;
+            }
+        }.execute();
     }
 
     /** Wrap a LaunchTabPanel in a vertical-only scroller. */

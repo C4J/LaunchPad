@@ -121,6 +121,23 @@ public class MacAppUtils {
         }
     }
 
+    /**
+     * Load the on-disk cached PNG regardless of freshness. Used by the fast startup path so a
+     * stale-but-present icon can be shown immediately; the background refresh pass replaces it
+     * later if the bundle has actually changed. Returns null if there is no usable cached PNG.
+     */
+    private static ImageIcon loadIconFromDiskAnyAge(Path bundle) {
+        Path png = iconCacheFile(bundle);
+        if (!Files.exists(png)) return null;
+        try (InputStream in = Files.newInputStream(png)) {
+            BufferedImage bi = ImageIO.read(in);
+            if (bi == null || !hasVisibleContent(bi)) return null;
+            return new ImageIcon(bi);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** Save image to disk cache as <BundleName>.png. Returns the final path or null on failure. */
     private static Path saveIconToDisk(Path bundle, BufferedImage bi) {
         ensureDiskCacheDir();
@@ -238,6 +255,86 @@ public class MacAppUtils {
     }
 
     /* ===================== Main API ===================== */
+
+    /**
+     * Cheap check (filesystem mtimes only — no subprocess) for whether a bundle's cached icon is
+     * missing or out of date and should be re-resolved. Used by the background refresh pass so we
+     * only spawn osascript/qlmanage for apps that have actually changed since the cache was written.
+     */
+    public static boolean needsIconRefresh(File bundle) {
+        if (bundle == null || !bundle.exists()) return false;
+        Path bpath = bundle.toPath();
+        Path png = iconCacheFile(bpath);
+        if (!Files.exists(png)) return true;
+        return !diskIconFresh(bpath, png);
+    }
+
+    /** Resolve a bundle's display name from its Info.plist without resolving (or spawning) its icon. */
+    private static String resolveDisplayName(File bundle, Path bpath) {
+        Path infoPlist = bpath.resolve("Contents/Info.plist");
+        try {
+            // iOS wrapper bundle (Wrapper/<Name>.app): no Contents/Info.plist
+            if (!Files.exists(infoPlist)) {
+                String displayName = stripAppExtension(bundle.getName());
+                try (var s = Files.list(bpath.resolve("Wrapper"))) {
+                    Path innerApp = s.filter(p -> p.getFileName().toString().endsWith(".app")).findFirst().orElse(null);
+                    if (innerApp != null) {
+                        Path innerPlist = innerApp.resolve("Info.plist");
+                        if (Files.exists(innerPlist)) {
+                            NSDictionary innerRoot = (NSDictionary) PropertyListParser.parse(innerPlist.toFile());
+                            if (innerRoot.containsKey("CFBundleDisplayName"))
+                                displayName = innerRoot.objectForKey("CFBundleDisplayName").toString();
+                            else if (innerRoot.containsKey("CFBundleName"))
+                                displayName = innerRoot.objectForKey("CFBundleName").toString();
+                        }
+                    }
+                } catch (Exception ignore) {}
+                return displayName;
+            }
+
+            NSDictionary root = (NSDictionary) PropertyListParser.parse(infoPlist.toFile());
+            if (root.containsKey("CFBundleDisplayName")) return root.objectForKey("CFBundleDisplayName").toString();
+            if (root.containsKey("CFBundleName")) return root.objectForKey("CFBundleName").toString();
+            return stripAppExtension(bundle.getName());
+        } catch (Exception e) {
+            return stripAppExtension(bundle.getName());
+        }
+    }
+
+    /**
+     * Fast startup variant of {@link #createAppComponent}: resolves the display name from Info.plist
+     * (cheap) and takes the icon from the memory cache, else the on-disk PNG <em>ignoring freshness</em>,
+     * else a blank placeholder. It NEVER calls resolveIconAtAddTime, so it spawns no osascript/qlmanage
+     * subprocesses and returns immediately — keeping the window paint fast on launch. Stale or missing
+     * icons are brought up to date afterwards by the background pass (see {@link #needsIconRefresh} and
+     * {@link #refreshIcon}).
+     */
+    public static AppComponent createAppComponentFast(File bundle) {
+        if (bundle == null || !bundle.exists()) return null;
+        try {
+            Path bpath = bundle.toPath();
+            String displayName = resolveDisplayName(bundle, bpath);
+            String memKey = canonical(bpath) + "|" + ICON_RENDER_SIZE;
+
+            ImageIcon icon = ICON_CACHE.get(memKey);
+            if (icon == null) {
+                ImageIcon fromDisk = loadIconFromDiskAnyAge(bpath);
+                if (fromDisk != null) {
+                    icon = fromDisk;
+                    ICON_CACHE.put(memKey, icon);
+                }
+            }
+            if (icon == null) icon = new ImageIcon(); // placeholder; background pass fills it in
+
+            AppComponent comp = new AppComponent(bundle, displayName, icon);
+            Path png = iconCacheFile(bpath);
+            if (Files.exists(png)) comp.setCustomIconPath(png.toString());
+            return comp;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
 
     /** Creates an AppComponent with display name + icon.
      *  Icon is resolved synchronously now (at add-time), then cached to memory+disk.

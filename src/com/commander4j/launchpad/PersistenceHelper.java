@@ -147,7 +147,10 @@ public class PersistenceHelper
 
                     File bundle = new File(path);
                     if (bundle.exists() && index < panel.getComponentCount()) {
-                        AppComponent app = MacAppUtils.createAppComponent(bundle);
+                        // Fast path: show cached icons immediately, never spawn icon-resolution
+                        // subprocesses here. JLaunchPad refreshes changed icons in the background
+                        // once the window is visible.
+                        AppComponent app = MacAppUtils.createAppComponentFast(bundle);
                         if (app != null) {
                             ((LaunchCell) panel.getComponent(index)).setApp(app);
                             lastIndexAssigned++;
