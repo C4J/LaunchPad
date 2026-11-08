@@ -2,6 +2,7 @@ package com.commander4j.launchpad;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.io.File;
 import java.io.IOException;
 
@@ -17,8 +18,20 @@ public class AppComponent extends JPanel
     private final String appName;
     private final String displayName;
 
-    private final JLabel iconLabel;
-    private final JLabel nameLabel;
+    /**
+     * Single compound label: icon on top, caption centred underneath.
+     * One label (rather than icon + caption labels in a BorderLayout) means the caption is
+     * centred on the icon by construction and the icon/caption spacing is a single knob.
+     */
+    private final JLabel label;
+
+    /**
+     * Gap between the icon's bounding box and the caption, in pixels. Negative on purpose:
+     * macOS app icons carry a ~10px transparent margin inside the 120px render square, so the
+     * caption may sit inside that margin without touching the visible artwork. Full-bleed custom
+     * PNG icons will come within a pixel or so of the caption; raise this if that ever matters.
+     */
+    private static final int ICON_TEXT_GAP = -3;
     
  // --- Add in AppComponent ---
     private String customIconPath;
@@ -49,19 +62,19 @@ public class AppComponent extends JPanel
         setOpaque(false);
         setPreferredSize(new Dimension(60, 60));
 
-        iconLabel = new JLabel(icon);
-        iconLabel.setHorizontalAlignment(JLabel.CENTER);
+        // No fixed CSS width on the div: Swing scales CSS px by 1.3, so width:130px produced a
+        // 169px view inside a 150px cell and pushed the caption ~9px right of centre.
+        // The HTML div still wraps long names to the cell width.
+        label = new JLabel("<html><div style='text-align:center;'>"
+                + escapeHtml(this.displayName) + "</div></html>", icon, JLabel.CENTER);
+        label.setVerticalAlignment(JLabel.TOP);              // icon pinned to the cell top; wrapped names grow downwards
+        label.setHorizontalTextPosition(JLabel.CENTER);       // caption centred on the icon
+        label.setVerticalTextPosition(JLabel.BOTTOM);         // caption below the icon
+        label.setIconTextGap(ICON_TEXT_GAP);
+        label.setToolTipText(this.displayName);
+        label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
 
-        nameLabel = new JLabel(this.displayName, JLabel.CENTER);
-     // after creating nameLabel
-        nameLabel.setText("<html><div style='text-align:center;width:130px;'>"
-            + escapeHtml(this.displayName) + "</div></html>");
-        nameLabel.setToolTipText(this.displayName);
-        nameLabel.setFont(nameLabel.getFont().deriveFont(12f));
-
-
-        add(iconLabel, BorderLayout.CENTER);
-        add(nameLabel, BorderLayout.SOUTH);
+        add(label, BorderLayout.CENTER);
 
         setTransferHandler(new AppComponentTransferHandler());
 
@@ -71,10 +84,8 @@ public class AppComponent extends JPanel
 
         addMouseListener(adapter);
         addMouseMotionListener(adapter);
-        iconLabel.addMouseListener(adapter);
-        iconLabel.addMouseMotionListener(adapter);
-        nameLabel.addMouseListener(adapter);
-        nameLabel.addMouseMotionListener(adapter);
+        label.addMouseListener(adapter);
+        label.addMouseMotionListener(adapter);
     }
 
     private static String stripAppSuffix(String s) {
@@ -87,7 +98,7 @@ public class AppComponent extends JPanel
 
     /** Allows icon updates after construction. */
     public void setIcon(ImageIcon icon) {
-        iconLabel.setIcon(icon);
+        label.setIcon(icon);
         revalidate();
         repaint();
     }
